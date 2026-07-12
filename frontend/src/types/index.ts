@@ -21,6 +21,8 @@ export interface MicrophoneDevice {
     label: string;
 }
 
+export type AudioInputMode = 'microphone' | 'system';
+
 // WebSocket message types
 export interface WSMessage {
     type: string;

@@ -30,6 +30,11 @@ from ..utils.protobuf import (
 )
 
 
+def log_direction(direction: str) -> str:
+    """Convert direction text to ASCII for launcher logs."""
+    return direction.replace("→", "->")
+
+
 @dataclass
 class DualSession:
     """Represents a bidirectional translation session with two parallel connections."""
@@ -53,6 +58,7 @@ class DualSession:
     current_source_lang: str = ""
     current_source_text: str = ""
     current_target_text: str = ""
+    source_format: str = "wav"
 
 
 class BidirectionalService:
@@ -65,6 +71,7 @@ class BidirectionalService:
     def __init__(self):
         self.config = get_config()
         self._event_names = None
+        self.last_error = ""
     
     @property
     def event_names(self):
@@ -94,6 +101,7 @@ class BidirectionalService:
         connect_id: str,
         source_lang: str,
         target_lang: str,
+        source_format: str,
     ) -> Any:
         """Connect and start a single translation session."""
         try:
@@ -109,19 +117,53 @@ class BidirectionalService:
             )
             
             # Send StartSession
-            request = build_start_session_request(session_id, source_lang, target_lang)
+            request = build_start_session_request(session_id, source_lang, target_lang, source_format)
             await ws.send(request)
             
-            logging.debug(f"Connected session: {source_lang} → {target_lang}")
+            logging.debug(f"Connected session: {source_lang} -> {target_lang}")
             return ws
             
         except Exception as e:
-            logging.error(f"Failed to connect session {source_lang}→{target_lang}: {e}")
+            error_detail = self._format_connect_error(e)
+            self.last_error = f"{source_lang}->{target_lang} connect failed: {error_detail}"
+            logging.error(f"Failed to connect session {source_lang}->{target_lang}: {error_detail}")
             return None
+
+    def _format_connect_error(self, error: Exception) -> str:
+        """Format WebSocket connection errors without exposing credential values."""
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None) or getattr(response, "status", None)
+        reason = getattr(response, "reason_phrase", None) or getattr(response, "reason", None)
+        body = getattr(response, "body", None)
+
+        if isinstance(body, bytes):
+            body_text = body.decode("utf-8", errors="ignore").strip()
+        else:
+            body_text = str(body).strip() if body else ""
+
+        parts = [error.__class__.__name__]
+
+        if status_code:
+            parts.append(f"HTTP {status_code}")
+
+        if reason:
+            parts.append(str(reason))
+
+        message = str(error).strip()
+        if message:
+            parts.append(message)
+
+        if body_text:
+            parts.append(body_text[:300])
+
+        return " | ".join(parts)
     
-    async def connect(self, session: DualSession) -> bool:
+    async def connect(self, session: DualSession, source_format: str = "wav") -> bool:
         """Connect both translation sessions."""
         try:
+            self.last_error = ""
+            session.source_format = source_format
+
             # Generate session IDs
             session.zh_en_session_id = str(uuid.uuid4())
             session.zh_en_connect_id = str(uuid.uuid4())
@@ -133,12 +175,14 @@ class BidirectionalService:
                 self._connect_session(
                     session.zh_en_session_id,
                     session.zh_en_connect_id,
-                    "zh", "en"
+                    "zh", "en",
+                    source_format
                 ),
                 self._connect_session(
                     session.en_zh_session_id,
                     session.en_zh_connect_id,
-                    "en", "zh"
+                    "en", "zh",
+                    source_format
                 ),
             )
             
@@ -147,7 +191,7 @@ class BidirectionalService:
                 session.en_zh_ws = en_zh_ws
                 session.zh_en_active = True
                 session.en_zh_active = True
-                logging.info("✅ Connected: 中文 ↔ English (双向翻译)")
+                logging.info(f"[AST] Connected zh <-> en, audio={source_format}")
                 return True
             else:
                 # Cleanup partial connections
@@ -155,12 +199,15 @@ class BidirectionalService:
                     await zh_en_ws.close()
                 if en_zh_ws:
                     await en_zh_ws.close()
+                if not self.last_error:
+                    self.last_error = "火山 AST 双向会话未全部连接成功，请检查 App ID、Access Token、服务权限和资源 ID。"
                 return False
-                
+
         except Exception as e:
-            logging.error(f"❌ Failed to connect dual sessions: {e}")
+            self.last_error = self._format_connect_error(e)
+            logging.error(f"[ERROR] Failed to connect dual sessions: {self.last_error}")
             return False
-    
+
     async def send_audio(self, session: DualSession, audio_data: bytes) -> bool:
         """Send audio data to both sessions."""
         try:
@@ -200,7 +247,7 @@ class BidirectionalService:
             
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logging.info("📥 Sent FinishSession to both sessions")
+                logging.info("[AST] Sent FinishSession to both sessions")
                 
         except Exception as e:
             logging.error(f"Error finishing sessions: {e}")
@@ -250,31 +297,54 @@ class BidirectionalService:
         en_zh_target = ""
         zh_en_sequence = 0
         en_zh_sequence = 0
-        
+        zh_en_ready = False
+        en_zh_ready = False
+        ready_notified = False
+
+        def build_session_error(direction: str, response: Any) -> str:
+            """Build a readable error message for browser and launcher logs."""
+            status_code = response.response_meta.StatusCode
+            message = response.response_meta.Message or "火山同声传译会话失败"
+            return f"{direction} 会话失败：{message}（状态码：{status_code}）"
+
+        async def notify_ready_if_all_sessions_started():
+            """Notify browser only after both AST sessions are fully started."""
+            nonlocal ready_notified
+
+            if ready_notified or not (zh_en_ready and en_zh_ready):
+                return
+
+            ready_notified = True
+            logging.info("[AST] Both AST sessions ready")
+            await on_message({"type": "status", "status": "ready"})
+
         async def process_zh_en_messages():
             """Process messages from zh→en session."""
-            nonlocal zh_en_source, zh_en_target, zh_en_sequence
+            nonlocal zh_en_source, zh_en_target, zh_en_sequence, zh_en_ready
             
             try:
                 async for message in session.zh_en_ws:
                     response = parse_response(message)
                     
                     if response.event == EventType.SessionStarted:
-                        logging.debug("✅ zh→en session ready")
+                        logging.debug("[AST] zh->en session ready")
+                        zh_en_ready = True
+                        await notify_ready_if_all_sessions_started()
                     
                     elif response.event == EventType.SessionFailed:
-                        logging.error(f"❌ zh→en session failed: {response.response_meta.Message}")
-                        await on_message({"type": "error", "message": response.response_meta.Message})
+                        error_message = build_session_error("zh→en", response)
+                        logging.error(f"[ERROR] {log_direction(error_message)}")
+                        await on_message({"type": "error", "message": error_message})
                     
                     elif response.event == EventType.SessionFinished:
-                        logging.debug("✅ zh→en session finished")
+                        logging.debug("[AST] zh->en session finished")
                         await on_message({"type": "turnComplete"})
                     
                     elif response.event == EventType.SourceSubtitleEnd:
                         if response.text:
                             zh_en_source = response.text
                             zh_en_sequence = response.response_meta.Sequence
-                            logging.info(f"🎤 [中→英] 原文: {response.text}")
+                            logging.info(f"[ASR] zh->en source chars={len(response.text)}")
                             # Send ASR result
                             await on_message({
                                 "type": "asr",
@@ -296,7 +366,7 @@ class BidirectionalService:
                     elif response.event == EventType.TranslationSubtitleEnd:
                         if response.text:
                             zh_en_target = response.text
-                            logging.info(f"🔄 [中→英] 译文: {response.text}")
+                            logging.info(f"[TRANS] zh->en target chars={len(response.text)}")
                             # Send translation if this is the active direction
                             await on_message({
                                 "type": "translation",
@@ -330,34 +400,36 @@ class BidirectionalService:
                             await on_message({"type": "sentenceComplete", "direction": "zh→en"})
                             
             except websockets.exceptions.ConnectionClosed:
-                logging.debug("zh→en connection closed")
+                logging.debug("zh->en connection closed")
             except Exception as e:
-                logging.error(f"Error in zh→en handler: {e}")
+                logging.error(f"Error in zh->en handler: {e}")
         
         async def process_en_zh_messages():
             """Process messages from en→zh session."""
-            nonlocal en_zh_source, en_zh_target, en_zh_sequence
+            nonlocal en_zh_source, en_zh_target, en_zh_sequence, en_zh_ready
             
             try:
                 async for message in session.en_zh_ws:
                     response = parse_response(message)
                     
                     if response.event == EventType.SessionStarted:
-                        logging.debug("✅ en→zh session ready")
-                        # Send ready status once (only from one session)
-                        await on_message({"type": "status", "status": "ready"})
+                        logging.debug("[AST] en->zh session ready")
+                        en_zh_ready = True
+                        await notify_ready_if_all_sessions_started()
                     
                     elif response.event == EventType.SessionFailed:
-                        logging.error(f"❌ en→zh session failed: {response.response_meta.Message}")
+                        error_message = build_session_error("en→zh", response)
+                        logging.error(f"[ERROR] {log_direction(error_message)}")
+                        await on_message({"type": "error", "message": error_message})
                     
                     elif response.event == EventType.SessionFinished:
-                        logging.debug("✅ en→zh session finished")
+                        logging.debug("[AST] en->zh session finished")
                     
                     elif response.event == EventType.SourceSubtitleEnd:
                         if response.text:
                             en_zh_source = response.text
                             en_zh_sequence = response.response_meta.Sequence
-                            logging.info(f"🎤 [英→中] 原文: {response.text}")
+                            logging.info(f"[ASR] en->zh source chars={len(response.text)}")
                             await on_message({
                                 "type": "asr",
                                 "text": response.text,
@@ -378,7 +450,7 @@ class BidirectionalService:
                     elif response.event == EventType.TranslationSubtitleEnd:
                         if response.text:
                             en_zh_target = response.text
-                            logging.info(f"🔄 [英→中] 译文: {response.text}")
+                            logging.info(f"[TRANS] en->zh target chars={len(response.text)}")
                             await on_message({
                                 "type": "translation",
                                 "text": response.text,
@@ -411,9 +483,9 @@ class BidirectionalService:
                             await on_message({"type": "sentenceComplete", "direction": "en→zh"})
                             
             except websockets.exceptions.ConnectionClosed:
-                logging.debug("en→zh connection closed")
+                logging.debug("en->zh connection closed")
             except Exception as e:
-                logging.error(f"Error in en→zh handler: {e}")
+                logging.error(f"Error in en->zh handler: {e}")
         
         # Run both message handlers concurrently
         session.zh_en_task = asyncio.create_task(process_zh_en_messages())

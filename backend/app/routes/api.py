@@ -84,7 +84,10 @@ async def summarize_meeting(request: web.Request) -> web.Response:
     summary = await summarizer.summarize_meeting(messages)
     
     if summary is None:
-        return web.json_response({"error": "Failed to generate summary"}, status=500)
+        return web.json_response(
+            {"error": "未配置 OPENAI_API_KEY 或 AI 总结服务调用失败。"},
+            status=500,
+        )
     
     return web.json_response({"summary": summary})
 

@@ -1,0 +1,17 @@
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.exe
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.deps.json
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.runtimeconfig.json
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.dll
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.pdb
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.csproj.AssemblyReference.cache
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.GeneratedMSBuildEditorConfig.editorconfig
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.AssemblyInfoInputs.cache
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.AssemblyInfo.cs
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.csproj.CoreCompileInputs.cache
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.sourcelink.json
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInte.D230855F.Up2Date
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.dll
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\refint\GoodInterpreter.Launcher.dll
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.pdb
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\GoodInterpreter.Launcher.genruntimeconfig.cache
+D:\code\Good-Interpreter\launcher\GoodInterpreter.Launcher\obj\Release\net8.0-windows\win-x64\ref\GoodInterpreter.Launcher.dll

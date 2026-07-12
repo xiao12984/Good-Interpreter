@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ConnectionStatus, SubtitleItem } from '../types';
+import type { AudioInputMode, ConnectionStatus, SubtitleItem } from '../types';
 import { generateId } from '../utils/audio';
+import { appendMergedSubtitle } from '../utils/subtitles';
 import { useAudioPlayer } from './useAudioPlayer';
 import { getActiveSession, messagesToSubtitles } from '../services/api';
 
@@ -15,8 +16,9 @@ interface UseWebSocketReturn {
     currentAsr: { text: string; isFinal: boolean };
     currentTranslation: { text: string; isFinal: boolean };
     subtitles: SubtitleItem[];
+    lastError: string | null;
     isMuted: boolean;
-    connect: () => void;
+    connect: (audioInputMode?: AudioInputMode) => Promise<void>;
     disconnect: () => void;
     sendAudio: (base64Data: string) => void;
     sendStop: () => void;
@@ -24,6 +26,14 @@ interface UseWebSocketReturn {
     loadHistory: () => Promise<void>;
     toggleMute: () => void;
 }
+
+type ReadyWaiter = {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timeoutId: number;
+};
+
+const MAX_PENDING_AUDIO_CHUNKS = 240;
 
 export function useWebSocket({
     sourceLanguage,
@@ -37,13 +47,55 @@ export function useWebSocket({
         isFinal: false,
     });
     const [subtitles, setSubtitles] = useState<SubtitleItem[]>([]);
+    const [lastError, setLastError] = useState<string | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
+    const connectPromiseRef = useRef<Promise<void> | null>(null);
+    const readyWaiterRef = useRef<ReadyWaiter | null>(null);
+    const audioReadyRef = useRef(false);
+    const pendingAudioRef = useRef<string[]>([]);
     const currentAsrRef = useRef('');
     const currentTranslationRef = useRef('');
     const languagesRef = useRef({ source: sourceLanguage, target: targetLanguage });
 
     const { queueAudio, playQueuedAudio, stopPlayback, isMuted, toggleMute } = useAudioPlayer();
+
+    const flushPendingAudio = useCallback(() => {
+        const ws = wsRef.current;
+
+        if (!ws || ws.readyState !== WebSocket.OPEN || !audioReadyRef.current) return;
+
+        const pendingAudio = pendingAudioRef.current.splice(0);
+
+        pendingAudio.forEach((base64Data) => {
+            ws.send(
+                JSON.stringify({
+                    type: 'audio',
+                    data: base64Data,
+                })
+            );
+        });
+    }, []);
+
+    const resolveReadyWaiter = useCallback(() => {
+        const waiter = readyWaiterRef.current;
+        if (!waiter) return;
+
+        window.clearTimeout(waiter.timeoutId);
+        readyWaiterRef.current = null;
+        connectPromiseRef.current = null;
+        waiter.resolve();
+    }, []);
+
+    const rejectReadyWaiter = useCallback((message: string) => {
+        const waiter = readyWaiterRef.current;
+        if (!waiter) return;
+
+        window.clearTimeout(waiter.timeoutId);
+        readyWaiterRef.current = null;
+        connectPromiseRef.current = null;
+        waiter.reject(new Error(message));
+    }, []);
 
     // Update language refs
     useEffect(() => {
@@ -79,7 +131,7 @@ export function useWebSocket({
                 sourceLanguage: sourceLang || languagesRef.current.source,
                 targetLanguage: targetLang || languagesRef.current.target,
             };
-            setSubtitles((prev) => [...prev, newSubtitle]);
+            setSubtitles((prev) => appendMergedSubtitle(prev, newSubtitle));
         }
 
         // Reset current texts
@@ -95,14 +147,45 @@ export function useWebSocket({
         await playQueuedAudio();
     }, [addSubtitle, playQueuedAudio]);
 
-    const connect = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    const connect = useCallback((audioInputMode: AudioInputMode = 'microphone') => {
+        if (wsRef.current?.readyState === WebSocket.OPEN && status === 'connected') {
+            return Promise.resolve();
+        }
+
+        if (connectPromiseRef.current) {
+            return connectPromiseRef.current;
+        }
 
         setStatus('connecting');
+        setLastError(null);
+        audioReadyRef.current = false;
+
+        if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
         wsRef.current = ws;
+
+        const connectPromise = new Promise<void>((resolve, reject) => {
+            const timeoutId = window.setTimeout(() => {
+                if (wsRef.current === ws) {
+                    ws.close();
+                    wsRef.current = null;
+                }
+
+                audioReadyRef.current = false;
+                readyWaiterRef.current = null;
+                connectPromiseRef.current = null;
+                reject(new Error('等待翻译服务就绪超时，请检查后端服务和火山 AST 连接。'));
+            }, 15000);
+
+            readyWaiterRef.current = { resolve, reject, timeoutId };
+        });
+
+        connectPromiseRef.current = connectPromise;
 
         ws.onopen = () => {
             console.log('WebSocket connected');
@@ -113,6 +196,7 @@ export function useWebSocket({
                     type: 'start',
                     sourceLanguage: languagesRef.current.source,
                     targetLanguage: languagesRef.current.target,
+                    audioFormat: audioInputMode === 'system' ? 'pcm' : 'wav',
                 })
             );
         };
@@ -129,6 +213,10 @@ export function useWebSocket({
                 case 'status':
                     if (data.status === 'ready') {
                         setStatus('connected');
+                        setLastError(null);
+                        audioReadyRef.current = true;
+                        flushPendingAudio();
+                        resolveReadyWaiter();
                     } else if (data.status === 'disconnected') {
                         setStatus('disconnected');
                     }
@@ -167,47 +255,101 @@ export function useWebSocket({
 
                 case 'error':
                     console.error('Server error:', data.message);
+                    setLastError(data.message || '服务器返回未知错误');
                     setStatus('error');
+                    audioReadyRef.current = false;
+                    rejectReadyWaiter(data.message || '服务器返回未知错误');
                     break;
             }
         };
 
         ws.onclose = () => {
             console.log('WebSocket disconnected');
+            if (wsRef.current === ws) {
+                wsRef.current = null;
+            }
             setStatus('disconnected');
+            audioReadyRef.current = false;
+            rejectReadyWaiter('WebSocket 已断开，翻译服务没有进入就绪状态。');
         };
 
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
+            const message = 'WebSocket 连接异常，请检查后端服务是否正常。';
+            setLastError(message);
             setStatus('error');
+            audioReadyRef.current = false;
+            rejectReadyWaiter(message);
         };
-    }, [handleTurnComplete, queueAudio, playQueuedAudio, addSubtitle]);
+
+        return connectPromise;
+    }, [
+        status,
+        handleTurnComplete,
+        queueAudio,
+        playQueuedAudio,
+        addSubtitle,
+        flushPendingAudio,
+        resolveReadyWaiter,
+        rejectReadyWaiter,
+    ]);
 
     const disconnect = useCallback(() => {
+        rejectReadyWaiter('已断开翻译连接。');
+        audioReadyRef.current = false;
+        pendingAudioRef.current = [];
+
         if (wsRef.current) {
             wsRef.current.close();
             wsRef.current = null;
         }
         stopPlayback();
         setStatus('disconnected');
-    }, [stopPlayback]);
+        setLastError(null);
+    }, [stopPlayback, rejectReadyWaiter]);
 
     const sendAudio = useCallback((base64Data: string) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(
+        if (wsRef.current?.readyState === WebSocket.OPEN && audioReadyRef.current) {
+            wsRef.current?.send(
                 JSON.stringify({
                     type: 'audio',
                     data: base64Data,
                 })
             );
+            return;
+        }
+
+        pendingAudioRef.current.push(base64Data);
+
+        if (pendingAudioRef.current.length > MAX_PENDING_AUDIO_CHUNKS) {
+            pendingAudioRef.current.splice(
+                1,
+                pendingAudioRef.current.length - MAX_PENDING_AUDIO_CHUNKS
+            );
         }
     }, []);
 
     const sendStop = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'stop' }));
+        const ws = wsRef.current;
+        wsRef.current = null;
+        audioReadyRef.current = false;
+        pendingAudioRef.current = [];
+        rejectReadyWaiter('已停止翻译连接。');
+
+        if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'stop' }));
+
+            window.setTimeout(() => {
+                ws.close();
+                setStatus('disconnected');
+            }, 300);
+        } else if (ws?.readyState === WebSocket.CONNECTING) {
+            ws.close();
+            setStatus('disconnected');
+        } else {
+            setStatus('disconnected');
         }
-    }, []);
+    }, [rejectReadyWaiter]);
 
     const clearSubtitles = useCallback(() => {
         setSubtitles([]);
@@ -230,6 +372,7 @@ export function useWebSocket({
         currentAsr,
         currentTranslation,
         subtitles,
+        lastError,
         isMuted,
         connect,
         disconnect,

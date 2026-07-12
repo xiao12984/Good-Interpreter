@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Good-Interpreter 一键安装包打包说明</title>
+  <style>
+    body {
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      line-height: 1.7;
+      margin: 32px;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      padding: 28px 34px;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 24px;
+    }
+
+    h2 {
+      margin-top: 28px;
+      font-size: 18px;
+    }
+
+    code,
+    pre {
+      font-family: Consolas, "Cascadia Mono", monospace;
+    }
+
+    pre {
+      padding: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      overflow-x: auto;
+    }
+
+    .note {
+      padding: 12px 14px;
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Good-Interpreter 一键安装包打包说明</h1>
+
+  <p>本目录提供一键打包脚本和 Inno Setup 安装脚本，用于生成 Windows 安装程序 <code>Good-Interpreter-Setup.exe</code>。</p>
+
+  <h2>一、打包机准备工具</h2>
+  <ul>
+    <li>.NET 8 SDK：发布 WinForms 启动器。</li>
+    <li>Python 3 和 PyInstaller：把后端打包为 <code>GoodInterpreter.Backend.exe</code>。</li>
+    <li>Node.js 和 npm：构建 <code>frontend/dist</code>。</li>
+    <li>Inno Setup 6：编译安装包。</li>
+  </ul>
+
+  <h2>二、一键生成安装包</h2>
+  <pre><code>cd D:\code\录写\Good-Interpreter
+powershell -ExecutionPolicy Bypass -File .\installer\package.ps1</code></pre>
+
+  <p>生成结果：</p>
+  <pre><code>D:\code\录写\Good-Interpreter\dist\Good-Interpreter-Setup.exe</code></pre>
+
+  <h2>三、安装包内容</h2>
+  <ul>
+    <li>启动器 <code>GoodInterpreter.Launcher.exe</code>。</li>
+    <li>内置后端 <code>GoodInterpreter.Backend.exe</code>，目标电脑无需安装 Python。</li>
+    <li>前端静态文件 <code>frontend/dist</code>，目标电脑无需安装 Node.js 或 npm。</li>
+    <li>火山 AST protobuf 资源 <code>backend/ast_python</code>。</li>
+  </ul>
+
+  <h2>四、目标电脑使用流程</h2>
+  <ol>
+    <li>运行 <code>Good-Interpreter-Setup.exe</code>。</li>
+    <li>打开 Good-Interpreter。</li>
+    <li>输入火山 App Key 和 Access Key。</li>
+    <li>点击“保存并开始使用”。</li>
+    <li>程序自动启动服务并打开翻译页面。</li>
+  </ol>
+
+  <p class="note">安装包默认安装到 <code>%LOCALAPPDATA%\Programs\Good-Interpreter</code>，这样 .env、数据库和日志都能正常写入，不需要管理员权限。</p>
+</main>
+</body>
+</html>

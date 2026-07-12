@@ -1,0 +1,7 @@
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.pdb
+C:\Users\Admin\Desktop\同声传译\D3DCompiler_47_cor3.dll
+C:\Users\Admin\Desktop\同声传译\PenImc_cor3.dll
+C:\Users\Admin\Desktop\同声传译\PresentationNative_cor3.dll
+C:\Users\Admin\Desktop\同声传译\vcruntime140_cor3.dll
+C:\Users\Admin\Desktop\同声传译\wpfgfx_cor3.dll
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.exe

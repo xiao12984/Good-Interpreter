@@ -1,0 +1,7 @@
+D:\code\Good-Interpreter\installer\build\launcher\GoodInterpreter.Launcher.pdb
+D:\code\Good-Interpreter\installer\build\launcher\D3DCompiler_47_cor3.dll
+D:\code\Good-Interpreter\installer\build\launcher\PenImc_cor3.dll
+D:\code\Good-Interpreter\installer\build\launcher\PresentationNative_cor3.dll
+D:\code\Good-Interpreter\installer\build\launcher\vcruntime140_cor3.dll
+D:\code\Good-Interpreter\installer\build\launcher\wpfgfx_cor3.dll
+D:\code\Good-Interpreter\installer\build\launcher\GoodInterpreter.Launcher.exe

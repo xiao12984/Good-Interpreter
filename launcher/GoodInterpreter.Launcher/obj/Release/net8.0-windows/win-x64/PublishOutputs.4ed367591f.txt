@@ -1,0 +1,2 @@
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\publish\GoodInterpreter.Launcher.pdb
+C:\Users\Admin\Desktop\生成\同声传译\Release\net8.0-windows\win-x64\publish\GoodInterpreter.Launcher.exe

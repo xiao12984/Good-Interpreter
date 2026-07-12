@@ -56,10 +56,10 @@ def get_protobuf_types():
             _TranslateResponse = TranslateResponse
             _EventType = EventType
             
-            logging.info("✅ Protobuf schema loaded")
+            logging.info("[OK] Protobuf schema loaded")
             
         except ImportError as e:
-            logging.error(f"❌ Failed to import protobuf types: {e}")
+            logging.error(f"[ERROR] Failed to import protobuf types: {e}")
             raise
     
     return _TranslateRequest, _TranslateResponse, _EventType
@@ -96,6 +96,7 @@ def build_start_session_request(
     session_id: str,
     source_lang: str = "zh",
     target_lang: str = "en",
+    source_format: Optional[str] = None,
 ) -> bytes:
     """
     Build StartSession protobuf request.
@@ -119,7 +120,7 @@ def build_start_session_request(
     request.user.sdk_version = "1.0.0"
     
     # Source audio config
-    request.source_audio.format = config.audio.source_format
+    request.source_audio.format = source_format or config.audio.source_format
     request.source_audio.rate = config.audio.source_rate
     request.source_audio.bits = config.audio.source_bits
     request.source_audio.channel = config.audio.source_channel

@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass, field, asdict
 
+from .config import get_config
 
-# Database path
-DB_PATH = Path(__file__).parent.parent / "data" / "translations.db"
+def get_default_db_path() -> Path:
+    """Get the database path under the writable backend resource directory."""
+    return get_config().base_dir / "data" / "translations.db"
 
 
 @dataclass
@@ -67,9 +69,9 @@ class MeetingSession:
 
 class Database:
     """SQLite database manager."""
-    
-    def __init__(self, db_path: Path = DB_PATH):
-        self.db_path = db_path
+
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or get_default_db_path()
         self._ensure_directory()
         self._init_tables()
     

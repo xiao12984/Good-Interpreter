@@ -48,7 +48,7 @@ VOLC_ACCESS_KEY=your_access_key
 OPENAI_API_KEY=sk-your_api_key
 
 # 服务端口
-PORT=3000
+PORT=3100
 ```
 
 ### 运行
@@ -66,8 +66,8 @@ python -m app.main
 ```
 
 服务启动后：
-- HTTP: http://localhost:3000
-- WebSocket: ws://localhost:3000/ws
+- HTTP: http://localhost:3100
+- WebSocket: ws://localhost:3100/ws
 
 ## 📡 API 接口
 

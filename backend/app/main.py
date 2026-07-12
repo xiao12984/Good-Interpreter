@@ -11,7 +11,7 @@ from pathlib import Path
 from aiohttp import web
 
 from .config import get_config, validate_config
-from .routes import websocket_handler, setup_api_routes
+from .routes import websocket_handler, captions_handler, setup_api_routes
 from .database import get_database
 
 
@@ -29,10 +29,10 @@ async def index_handler(request: web.Request) -> web.FileResponse:
     # Try to serve from frontend dist, fallback to web-app public
     config = get_config()
     
-    # Check frontend dist first
-    frontend_dist = config.base_dir.parent / "frontend" / "dist" / "index.html"
-    if frontend_dist.exists():
-        return web.FileResponse(frontend_dist)
+    # Check packaged/source frontend dist first
+    frontend_index = config.frontend_dist_dir / "index.html"
+    if frontend_index.exists():
+        return web.FileResponse(frontend_index)
     
     # Fallback to web-app public
     web_app_index = config.base_dir.parent / "web-app" / "public" / "index-volcengine.html"
@@ -41,7 +41,7 @@ async def index_handler(request: web.Request) -> web.FileResponse:
     
     # Return simple HTML if no frontend found
     return web.Response(
-        text="<h1>Backend is running</h1><p>Frontend not found. Run 'npm run build' in frontend directory.</p>",
+        text="<h1>Good-Interpreter service is running</h1><p>Frontend files are missing. Please reinstall Good-Interpreter.</p>",
         content_type="text/html",
     )
 
@@ -53,14 +53,16 @@ def create_app() -> web.Application:
     
     # WebSocket route
     app.router.add_get("/ws", websocket_handler)
+    app.router.add_get("/ws/captions", captions_handler)
     
     # REST API routes
     setup_api_routes(app)
     
     # Static files - serve frontend dist if exists
-    frontend_dist = config.base_dir.parent / "frontend" / "dist"
-    if frontend_dist.exists():
-        app.router.add_static("/assets", frontend_dist / "assets")
+    frontend_dist = config.frontend_dist_dir
+    frontend_assets = frontend_dist / "assets"
+    if frontend_assets.exists():
+        app.router.add_static("/assets", frontend_assets)
     
     # Index route (must be after /api routes)
     app.router.add_get("/", index_handler)
@@ -81,24 +83,25 @@ def main():
     # Setup logging
     setup_logging(config.server.debug)
     
-    logging.info("🚀 Starting Python backend server...")
+    logging.info("[START] Starting Python backend server...")
     
     # Validate configuration
     if not validate_config(config):
         sys.exit(1)
     
-    logging.info("✅ Volcengine API credentials configured")
+    logging.info("[OK] Volcengine API credentials configured")
     
     # Initialize database
     db = get_database()
-    logging.info("💾 Database initialized")
+    logging.info("[OK] Database initialized")
     
     # Create and run app
     app = create_app()
     
-    logging.info(f"🌐 Server running at http://localhost:{config.server.port}")
-    logging.info(f"📡 WebSocket endpoint: ws://localhost:{config.server.port}/ws")
-    logging.info("🔊 Using Volcengine AST 2.0 API (Python)")
+    logging.info(f"[HTTP] Server running at http://localhost:{config.server.port}")
+    logging.info(f"[WS] WebSocket endpoint: ws://localhost:{config.server.port}/ws")
+    logging.info(f"[WS] Caption endpoint: ws://localhost:{config.server.port}/ws/captions")
+    logging.info("[AST] Using Volcengine AST 2.0 API (Python)")
     
     web.run_app(
         app,

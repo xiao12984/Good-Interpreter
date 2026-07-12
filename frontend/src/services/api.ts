@@ -3,6 +3,7 @@
  */
 
 import type { SubtitleItem } from '../types';
+import { mergeSubtitleItems } from '../utils/subtitles';
 
 export interface SessionResponse {
     id: number;
@@ -89,7 +90,7 @@ export async function updateSessionTitle(
  * Convert API messages to SubtitleItems.
  */
 export function messagesToSubtitles(messages: MessageResponse[]): SubtitleItem[] {
-    return messages.map((msg) => ({
+    const subtitles = messages.map((msg) => ({
         id: `msg-${msg.id}`,
         timestamp: new Date(msg.createdAt),
         sourceText: msg.sourceText,
@@ -97,6 +98,8 @@ export function messagesToSubtitles(messages: MessageResponse[]): SubtitleItem[]
         sourceLanguage: msg.sourceLanguage,
         targetLanguage: msg.targetLanguage,
     }));
+
+    return mergeSubtitleItems(subtitles);
 }
 
 /**

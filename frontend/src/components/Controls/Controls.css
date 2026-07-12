@@ -2,20 +2,68 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-md) 20px;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     backdrop-filter: blur(20px);
-    flex-wrap: wrap;
-    gap: var(--space-md);
+    flex-wrap: nowrap;
+    gap: 10px;
+    min-width: 0;
 }
 
-/* Microphone Selector */
-.mic-selector-wrapper {
+/* Audio input source */
+.audio-source-wrapper {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 8px;
+    flex: 1 1 500px;
+    min-width: 0;
+}
+
+.audio-source-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px;
+    background: var(--bg-card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+.audio-source-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 74px;
+    height: 30px;
+    padding: 0 10px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-base);
+}
+
+.audio-source-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+}
+
+.audio-source-btn.active {
+    color: #ffffff;
+    background: var(--accent-primary);
+}
+
+.audio-source-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
 }
 
 .mic-selector {
@@ -27,7 +75,9 @@
     border-radius: var(--radius-md);
     padding: var(--space-xs) var(--space-sm);
     transition: var(--transition-base);
-    min-width: 180px;
+    flex: 1 1 220px;
+    min-width: 0;
+    max-width: 300px;
 }
 
 .mic-selector:hover {
@@ -61,7 +111,10 @@
     cursor: pointer;
     outline: none;
     appearance: none;
-    min-width: 100px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .mic-select option {
@@ -70,12 +123,22 @@
     padding: var(--space-sm);
 }
 
+.system-audio-label {
+    flex: 1;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .mic-refresh-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 32px;
     height: 32px;
+    flex: 0 0 32px;
     background: var(--bg-card);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
@@ -84,16 +147,22 @@
     transition: var(--transition-base);
 }
 
-.mic-refresh-btn:hover {
+.mic-refresh-btn:hover:not(:disabled) {
     background: var(--bg-card-hover);
     border-color: var(--accent-primary);
     color: var(--accent-primary);
+}
+
+.mic-refresh-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
 }
 
 /* Translation Mode Badge */
 .translation-mode {
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
 }
 
 .mode-badge {
@@ -107,20 +176,25 @@
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-primary);
+    white-space: nowrap;
 }
 
 /* Action Buttons */
 .action-buttons {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 8px;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-lg);
+    height: 46px;
+    padding: 0 18px;
     border: none;
     border-radius: var(--radius-md);
     font-family: inherit;
@@ -130,6 +204,11 @@
     transition: var(--transition-base);
     position: relative;
     overflow: hidden;
+}
+
+.btn-start,
+.btn-stop {
+    min-width: 150px;
 }
 
 .btn:disabled {
@@ -161,7 +240,8 @@
     background: var(--bg-card);
     color: var(--text-primary);
     border: 1px solid var(--glass-border);
-    padding: var(--space-sm);
+    width: 46px;
+    padding: 0;
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -193,11 +273,15 @@
         padding: var(--space-md);
     }
 
-    .mic-selector-wrapper,
+    .audio-source-wrapper,
     .translation-mode,
     .action-buttons {
         width: 100%;
         justify-content: center;
+    }
+
+    .audio-source-wrapper {
+        flex-wrap: wrap;
     }
 
     .mic-selector {

@@ -14,6 +14,7 @@ import aiohttp
 from aiohttp import web
 
 from ..services.bidirectional import BidirectionalService, DualSession
+from ..services.caption_hub import broadcast_caption, broadcast_status
 from ..database import get_database
 
 
@@ -38,13 +39,26 @@ def is_meaningful_text(text: str) -> bool:
     return len(cleaned) > 0
 
 
+def log_direction(direction: str) -> str:
+    """Convert UI direction text to ASCII for launcher logs."""
+    return direction.replace("→", "->")
+
+
+def get_language_pair(direction: str) -> tuple[str, str]:
+    """Return source and target language codes for a translation direction."""
+    if direction == "en→zh":
+        return "en", "zh"
+
+    return "zh", "en"
+
+
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     """Handle WebSocket connections from browser."""
     
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     
-    logging.info("🌐 Browser client connected")
+    logging.info("[WS] Browser client connected")
     
     # Get database
     db = get_database()
@@ -68,6 +82,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     
     message_sequence = 0
     db_session_created = False
+    audio_packet_count = 0
     
     # Initialize service
     service = BidirectionalService()
@@ -108,11 +123,11 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             # en→zh session should only process English text
             if direction == "zh→en" and not detected_chinese:
                 # zh→en session got English text - REJECT
-                logging.debug(f"⏭️  Rejected English text from zh→en session")
+                logging.debug("Rejected English text from zh->en session")
                 return
             elif direction == "en→zh" and detected_chinese:
                 # en→zh session got Chinese text - REJECT
-                logging.debug(f"⏭️  Rejected Chinese text from en→zh session")
+                logging.debug("Rejected Chinese text from en->zh session")
                 return
             
             # For final ASR - LOCK direction based on FIRST valid final ASR
@@ -121,19 +136,21 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 if active_direction:
                     # Only accept final ASR from active direction
                     if direction != active_direction:
-                        logging.debug(f"⏭️  Rejected ASR from {direction} (locked to {active_direction})")
+                        logging.debug(f"Rejected ASR from {log_direction(direction)} (locked to {log_direction(active_direction)})")
                         return
                     
                     # Update with new text from active direction
                     current_source_text = text
                     
-                    logging.info(f"✅ Updated ASR ({active_direction}): {text}")
+                    logging.info(f"[ASR] Updated direction={log_direction(active_direction)}, chars={len(text)}")
                     
                     await ws.send_str(json.dumps({
                         "type": "asr",
                         "text": text,
                         "isFinal": True,
                     }))
+                    source_lang, target_lang = get_language_pair(active_direction)
+                    await broadcast_caption(text, current_target_text, source_lang, target_lang, True, session.session_id)
                 else:
                     # No active direction yet - FIRST valid final ASR determines direction
                     # The direction is already validated above (language matches session)
@@ -141,13 +158,15 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     current_source_text = text
                     current_direction = active_direction
                     
-                    logging.info(f"🔒 LOCKED to {active_direction}: {text}")
+                    logging.info(f"[ASR] Locked direction={log_direction(active_direction)}, chars={len(text)}")
                     
                     await ws.send_str(json.dumps({
                         "type": "asr",
                         "text": text,
                         "isFinal": True,
                     }))
+                    source_lang, target_lang = get_language_pair(active_direction)
+                    await broadcast_caption(text, current_target_text, source_lang, target_lang, True, session.session_id)
             
             # For interim ASR - only show if matches active direction (or no direction yet)
             else:
@@ -161,6 +180,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                         "text": text,
                         "isFinal": False,
                     }))
+                    source_lang, target_lang = get_language_pair(active_direction)
+                    await broadcast_caption(text, current_target_text, source_lang, target_lang, False, session.session_id)
                 else:
                     # No active direction yet - show interim from expected direction
                     if direction == expected_direction:
@@ -169,6 +190,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                             "text": text,
                             "isFinal": False,
                         }))
+                        source_lang, target_lang = get_language_pair(expected_direction)
+                        await broadcast_caption(text, current_target_text, source_lang, target_lang, False, session.session_id)
         
         # Handle translation - ONLY from active direction
         elif msg_type == "translation":
@@ -177,7 +200,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 text = message.get("text", "")
                 current_target_text = text
                 
-                logging.debug(f"📋 Translation ({direction}): {text[:30]}...")
+                logging.debug(f"Translation direction={log_direction(direction)}, chars={len(text)}")
                 
                 await ws.send_str(json.dumps({
                     "type": "translation",
@@ -185,8 +208,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     "language": message.get("language", "en"),
                     "isFinal": message.get("isFinal", False),
                 }))
+                source_lang, target_lang = get_language_pair(direction or current_direction)
+                await broadcast_caption(
+                    current_source_text,
+                    current_target_text,
+                    source_lang,
+                    target_lang,
+                    message.get("isFinal", False),
+                    session.session_id,
+                )
             else:
-                logging.debug(f"⏭️  Skipped translation ({direction}), active is ({active_direction})")
+                logging.debug(f"Skipped translation direction={log_direction(direction)}, active={log_direction(active_direction)}")
         
         # Handle audio - STRICTLY only from active direction
         elif msg_type == "audio":
@@ -199,7 +231,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     "sampleRate": message.get("sampleRate"),
                 }))
             else:
-                logging.debug(f"🔇 Muted audio from ({direction}), active is ({active_direction})")
+                logging.debug(f"Muted audio direction={log_direction(direction)}, active={log_direction(active_direction)}")
         
         # Handle sentence complete - save to database
         elif msg_type == "sentenceComplete":
@@ -214,6 +246,14 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     "sourceLanguage": source_lang,
                     "targetLanguage": target_lang,
                 }))
+                await broadcast_caption(
+                    current_source_text,
+                    current_target_text,
+                    source_lang,
+                    target_lang,
+                    True,
+                    session.session_id,
+                )
                 
                 # Save to database
                 try:
@@ -226,7 +266,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                         sequence=message_sequence,
                     )
                     message_sequence += 1
-                    logging.info(f"💾 Saved: {current_source_text[:30]}... -> {current_target_text[:30]}...")
+                    logging.info(f"[DB] Saved message source_chars={len(current_source_text)}, target_chars={len(current_target_text)}")
                 except Exception as e:
                     logging.error(f"Failed to save message: {e}")
                 
@@ -240,6 +280,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Handle status events
         elif msg_type == "status":
             await ws.send_str(json.dumps(message))
+            await broadcast_status(message.get("status", "idle"))
         
         # Handle turn complete
         elif msg_type == "turnComplete":
@@ -250,6 +291,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Handle errors
         elif msg_type == "error":
             await ws.send_str(json.dumps(message))
+            await broadcast_status("idle", message.get("message", ""))
     
     try:
         async for msg in ws:
@@ -258,7 +300,11 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 msg_type = data.get("type")
                 
                 if msg_type == "start":
-                    logging.info("📤 Starting bidirectional translation: 中文 ↔ English")
+                    source_format = data.get("audioFormat", "wav")
+                    if source_format not in ("wav", "pcm"):
+                        source_format = "wav"
+
+                    logging.info(f"[AST] Starting bidirectional translation: zh <-> en, audio={source_format}")
                     
                     # Create session in database
                     try:
@@ -279,7 +325,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     }))
                     
                     # Connect both translation sessions
-                    if await service.connect(session):
+                    if await service.connect(session, source_format):
                         # Start message handler (runs in background)
                         asyncio.create_task(
                             service.handle_messages(session, send_to_browser)
@@ -287,17 +333,27 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     else:
                         await ws.send_str(json.dumps({
                             "type": "error",
-                            "message": "Failed to connect to translation service",
+                            "message": service.last_error or "Failed to connect to translation service",
                         }))
+                        await broadcast_status(
+                            "idle",
+                            service.last_error or "Failed to connect to translation service",
+                        )
                 
                 elif msg_type == "audio":
                     # Decode and forward audio data to both sessions
+                    audio_packet_count += 1
                     audio_data = base64.b64decode(data.get("data", ""))
-                    await service.send_audio(session, audio_data)
+                    if audio_packet_count == 1 or audio_packet_count % 100 == 0:
+                        logging.info(f"[AUDIO] Browser audio packets={audio_packet_count}, latest_bytes={len(audio_data)}")
+                    audio_sent = await service.send_audio(session, audio_data)
+                    if not audio_sent and (audio_packet_count == 1 or audio_packet_count % 100 == 0):
+                        logging.warning("[WARN] Browser audio received, but AST sessions are not ready for audio")
                 
                 elif msg_type == "stop":
                     # Finish both sessions
                     await service.finish(session)
+                    await broadcast_status("idle")
                     
                     # Mark session as ended in database
                     if db_session_created:
@@ -311,10 +367,12 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     
     except Exception as e:
         logging.error(f"Error in websocket handler: {e}")
+        await broadcast_status("idle")
     
     finally:
-        logging.info("🌐 Browser client disconnected")
+        logging.info("[WS] Browser client disconnected")
         await service.close(session)
+        await broadcast_status("idle")
         
         # End session in database if still active
         if db_session_created:

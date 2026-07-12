@@ -1,0 +1,6 @@
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.exe
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.dll
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.deps.json
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.runtimeconfig.json
+C:\Users\Admin\Desktop\同声传译\GoodInterpreter.Launcher.pdb
+C:\Users\Admin\Desktop\同声传译\ReaLTaiizor.dll

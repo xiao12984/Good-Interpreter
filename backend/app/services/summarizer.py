@@ -28,7 +28,7 @@ class SummaryService:
             Summary string or None if failed
         """
         if not self.api_key:
-            logging.error("❌ OPENAI_API_KEY is not set!")
+            logging.error("[ERROR] OPENAI_API_KEY is not set!")
             return None
         
         if not messages:

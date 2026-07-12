@@ -81,4 +81,4 @@ npm run build
 - 发送 PCM 音频数据（base64 编码）
 - 接收 ASR、翻译结果和 TTS 音频
 
-生产模式下，前端静态文件由后端托管，访问 `http://localhost:3000` 即可。
+生产模式下，前端静态文件由后端托管，访问 `http://localhost:3100` 即可。

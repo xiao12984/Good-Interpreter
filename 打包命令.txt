@@ -1,0 +1,2 @@
+cd D:\code\Good-Interpreter
+powershell -ExecutionPolicy Bypass -File .\installer\package.ps1

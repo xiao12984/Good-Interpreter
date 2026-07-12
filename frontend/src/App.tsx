@@ -39,10 +39,12 @@ function App() {
 
   const {
     isRecording,
+    audioInputMode,
     microphones,
     selectedMicrophoneId,
     startRecording,
     stopRecording,
+    selectAudioInputMode,
     selectMicrophone,
     refreshMicrophones,
   } = useAudioRecorder({
@@ -51,21 +53,34 @@ function App() {
   });
 
   // Update app status based on WebSocket and recording state
-  const displayStatus: ConnectionStatus = isRecording
-    ? 'recording'
-    : wsStatus;
+  const displayStatus: ConnectionStatus = wsStatus === 'error'
+    ? 'error'
+    : isRecording
+      ? 'recording'
+      : wsStatus;
 
   const handleStart = useCallback(async () => {
     try {
-      connect();
-
-      // Wait a bit for connection, then start recording
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await startRecording();
+      if (audioInputMode === 'system') {
+        await startRecording();
+        await connect(audioInputMode);
+      } else {
+        await connect(audioInputMode);
+        await startRecording();
+      }
     } catch (error) {
       console.error('Failed to start:', error);
+      sendStop();
+      stopRecording();
+      setVolume(0);
+      setFrequencyData(null);
+
+      const message = error instanceof Error
+        ? error.message
+        : '启动音频输入失败，请检查浏览器权限。';
+      window.alert(message);
     }
-  }, [connect, startRecording]);
+  }, [audioInputMode, connect, sendStop, startRecording, stopRecording]);
 
   const handleStop = useCallback(() => {
     stopRecording();
@@ -88,7 +103,7 @@ function App() {
         <main className="main-content">
           <SubtitleDisplay
             subtitles={subtitles}
-            isEmpty={!isRecording && subtitles.length === 0}
+            isEmpty={subtitles.length === 0 && !currentAsr.text && !currentTranslation.text}
             currentSourceText={isRecording ? currentAsr.text : ''}
             currentTargetText={isRecording ? currentTranslation.text : ''}
           />
@@ -96,6 +111,7 @@ function App() {
 
         <Controls
           isRecording={isRecording}
+          audioInputMode={audioInputMode}
           microphones={microphones}
           selectedMicrophoneId={selectedMicrophoneId}
           volume={volume}
@@ -104,6 +120,7 @@ function App() {
           onStart={handleStart}
           onStop={handleStop}
           onClear={handleClear}
+          onAudioInputModeChange={selectAudioInputMode}
           onMicrophoneChange={selectMicrophone}
           onRefreshMicrophones={refreshMicrophones}
           onToggleMute={toggleMute}

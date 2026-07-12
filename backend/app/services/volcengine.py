@@ -80,11 +80,11 @@ class VolcengineService:
                 ssl=ssl_context,
             )
             
-            logging.info("✅ Connected to Volcengine AST API")
+            logging.info("[AST] Connected to Volcengine AST API")
             return True
             
         except Exception as e:
-            logging.error(f"❌ Failed to connect to Volcengine: {e}")
+            logging.error(f"[ERROR] Failed to connect to Volcengine: {e}")
             return False
     
     async def start_session(self, session: TranslationSession) -> bool:
@@ -100,11 +100,11 @@ class VolcengineService:
             )
             await session.volcengine_ws.send(request)
             session.is_active = True
-            logging.info(f"📤 Session started: {session.source_lang} → {session.target_lang}")
+            logging.info(f"[AST] Session started: {session.source_lang} -> {session.target_lang}")
             return True
             
         except Exception as e:
-            logging.error(f"❌ Failed to start session: {e}")
+            logging.error(f"[ERROR] Failed to start session: {e}")
             return False
     
     async def send_audio(self, session: TranslationSession, audio_data: bytes) -> bool:
@@ -129,7 +129,7 @@ class VolcengineService:
         try:
             request = build_finish_request(session.session_id)
             await session.volcengine_ws.send(request)
-            logging.info("📥 Sent FinishSession request")
+            logging.info("[AST] Sent FinishSession request")
             return True
             
         except Exception as e:
@@ -183,22 +183,22 @@ class VolcengineService:
                 
                 # Session status events
                 if response.event == EventType.SessionStarted:
-                    logging.info("✅ Session ready")
+                    logging.info("[AST] Session ready")
                     browser_msg = {"type": "status", "status": "ready"}
                 
                 elif response.event == EventType.SessionFailed:
                     error_msg = response.response_meta.Message or "Session failed"
-                    logging.error(f"❌ Session failed: {error_msg}")
+                    logging.error(f"[ERROR] Session failed: {error_msg}")
                     browser_msg = {"type": "error", "message": error_msg}
                 
                 elif response.event == EventType.SessionFinished:
-                    logging.info("✅ Session finished")
+                    logging.info("[AST] Session finished")
                     browser_msg = {"type": "turnComplete"}
                 
                 # ASR (speech recognition) events
                 elif response.event == EventType.SourceSubtitleEnd:
                     if response.text:
-                        logging.info(f"🎤 原文: {response.text}")
+                        logging.info(f"[ASR] source chars={len(response.text)}")
                         browser_msg = {
                             "type": "asr",
                             "text": response.text,
@@ -221,7 +221,7 @@ class VolcengineService:
                 # Translation events
                 elif response.event == EventType.TranslationSubtitleEnd:
                     if response.text:
-                        logging.info(f"🔄 译文: {response.text}")
+                        logging.info(f"[TRANS] target chars={len(response.text)}")
                         browser_msg = {
                             "type": "translation",
                             "text": response.text,

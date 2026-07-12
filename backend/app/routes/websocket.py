@@ -8,48 +8,26 @@ import uuid
 import json
 import base64
 import logging
-import re
 
 import aiohttp
 from aiohttp import web
 
 from ..services.bidirectional import BidirectionalService, DualSession
 from ..services.caption_hub import broadcast_caption, broadcast_status
+from ..services.language_direction import (
+    get_effective_asr_direction,
+    get_expected_direction,
+    get_language_pair,
+    is_asr_direction_valid,
+    is_meaningful_text,
+    should_accept_translation,
+)
 from ..database import get_database
-
-
-def has_chinese(text: str) -> bool:
-    """Check if text contains Chinese characters (CJK Unified Ideographs)."""
-    # Unicode range for Chinese characters
-    return bool(re.search(r'[\u4e00-\u9fff]', text))
-
-
-def is_meaningful_text(text: str) -> bool:
-    """
-    Check if text contains meaningful content (not just punctuation).
-    Returns False if text only contains punctuation, whitespace, or symbols.
-    """
-    if not text:
-        return False
-    
-    # Remove common punctuation and whitespace
-    cleaned = re.sub(r'[，。！？,.!?\s"""'']+', '', text)
-    
-    # If nothing left after removing punctuation, it's not meaningful
-    return len(cleaned) > 0
 
 
 def log_direction(direction: str) -> str:
     """Convert UI direction text to ASCII for launcher logs."""
     return direction.replace("→", "->")
-
-
-def get_language_pair(direction: str) -> tuple[str, str]:
-    """Return source and target language codes for a translation direction."""
-    if direction == "en→zh":
-        return "en", "zh"
-
-    return "zh", "en"
 
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
@@ -109,25 +87,18 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             if not text or not is_meaningful_text(text):
                 return
             
-            # Detect language from ASR text
-            detected_chinese = has_chinese(text)
-            
             # Determine expected direction for this language
-            if detected_chinese:
-                expected_direction = "zh→en"  # Chinese should go to zh→en session
-            else:
-                expected_direction = "en→zh"  # English should go to en→zh session
+            expected_direction = get_expected_direction(text)
+            effective_direction = get_effective_asr_direction(direction, text)
             
             # CRITICAL: Validate that the direction matches the detected language
             # zh→en session should only process Chinese text
             # en→zh session should only process English text
-            if direction == "zh→en" and not detected_chinese:
-                # zh→en session got English text - REJECT
-                logging.debug("Rejected English text from zh->en session")
-                return
-            elif direction == "en→zh" and detected_chinese:
-                # en→zh session got Chinese text - REJECT
-                logging.debug("Rejected Chinese text from en->zh session")
+            if not is_asr_direction_valid(direction, text):
+                logging.debug(
+                    f"Rejected ASR direction={log_direction(direction)}, "
+                    f"expected={log_direction(expected_direction)}"
+                )
                 return
             
             # For final ASR - LOCK direction based on FIRST valid final ASR
@@ -135,8 +106,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 # If we already have an active direction for this sentence
                 if active_direction:
                     # Only accept final ASR from active direction
-                    if direction != active_direction:
-                        logging.debug(f"Rejected ASR from {log_direction(direction)} (locked to {log_direction(active_direction)})")
+                    if effective_direction != active_direction:
+                        logging.debug(f"Rejected ASR from {log_direction(effective_direction)} (locked to {log_direction(active_direction)})")
                         return
                     
                     # Update with new text from active direction
@@ -154,7 +125,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 else:
                     # No active direction yet - FIRST valid final ASR determines direction
                     # The direction is already validated above (language matches session)
-                    active_direction = expected_direction
+                    active_direction = effective_direction
                     current_source_text = text
                     current_direction = active_direction
                     
@@ -172,7 +143,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             else:
                 # If we have active direction, only show interim from that direction
                 if active_direction:
-                    if direction != active_direction:
+                    if effective_direction != active_direction:
                         return
                     
                     await ws.send_str(json.dumps({
@@ -196,7 +167,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Handle translation - ONLY from active direction
         elif msg_type == "translation":
             # Must match the active direction determined by ASR
-            if direction == active_direction or direction == current_direction:
+            if should_accept_translation(direction, active_direction):
                 text = message.get("text", "")
                 current_target_text = text
                 
@@ -208,7 +179,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     "language": message.get("language", "en"),
                     "isFinal": message.get("isFinal", False),
                 }))
-                source_lang, target_lang = get_language_pair(direction or current_direction)
+                source_lang, target_lang = get_language_pair(direction)
                 await broadcast_caption(
                     current_source_text,
                     current_target_text,
@@ -274,6 +245,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 current_source_text = ""
                 current_target_text = ""
                 active_direction = ""  # Allow next sentence to determine direction
+                current_direction = ""
                 zh_en_best_asr = {"text": "", "length": 0, "sequence": 0}
                 en_zh_best_asr = {"text": "", "length": 0, "sequence": 0}
         
@@ -287,6 +259,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             await ws.send_str(json.dumps({"type": "turnComplete"}))
             # Reset active direction
             active_direction = ""
+            current_direction = ""
         
         # Handle errors
         elif msg_type == "error":

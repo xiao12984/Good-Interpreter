@@ -7,11 +7,22 @@ __pycache__/
 # Node
 node_modules/
 dist/
+.tmp/
 
 # Environment
+backend/.env
 backend\.env
 .env
 .env.local
+
+# Generated/local build outputs
+.codegraph/
+installer/build/
+launcher/**/.vs/
+launcher/**/bin/
+launcher/**/obj/
+*.suo
+*.user
 
 # OS
 .DS_Store

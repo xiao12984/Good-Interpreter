@@ -3,7 +3,7 @@ import type { AudioInputMode, MicrophoneDevice } from '../types';
 import { arrayBufferToBase64, convertFloat32ToInt16 } from '../utils/audio';
 
 interface UseAudioRecorderProps {
-    onAudioData: (base64Data: string) => void;
+    onAudioData: (base64Data: string, audioInputMode?: AudioInputMode) => void;
     onVolumeChange?: (volume: number, frequencyData: Uint8Array) => void;
 }
 
@@ -244,7 +244,7 @@ export function useAudioRecorder({
                 const pcmData = convertFloat32ToInt16(resampledData);
                 const base64Data = arrayBufferToBase64(pcmData.buffer as ArrayBuffer);
 
-                onAudioData(base64Data);
+                onAudioData(base64Data, audioInputMode);
             };
 
             source.connect(processor);
@@ -253,7 +253,7 @@ export function useAudioRecorder({
             isRecordingRef.current = true;
             setIsRecording(true);
             if (audioInputMode === 'microphone') {
-                onAudioData(arrayBufferToBase64(createStreamingWavHeader()));
+                onAudioData(arrayBufferToBase64(createStreamingWavHeader()), audioInputMode);
             }
 
             // Start volume visualization

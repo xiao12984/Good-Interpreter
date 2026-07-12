@@ -1,84 +1,115 @@
-# 会议同声传译 - React 前端
+# Good-Interpreter Frontend
 
-基于 React + TypeScript + Vite 的会议同声传译 Web 客户端。
+这是 Good-Interpreter 的 React + TypeScript Web 前端。它负责浏览器端录音、系统音频捕获、WebSocket 通信、字幕展示、TTS 播放、会议记录导出和 AI 总结入口。
 
-## 📁 项目结构
+## 目录
 
-```
+```text
 frontend/
 ├── src/
-│   ├── App.tsx              # 主应用组件
-│   ├── App.css              # 主样式（含背景动画）
-│   ├── index.css            # 全局样式/CSS变量
+│   ├── App.tsx
 │   ├── components/
-│   │   ├── Header/          # 顶部栏
-│   │   ├── Controls/        # 控制面板（录音、静音）
-│   │   ├── SubtitleDisplay/ # 双列会议记录显示
-│   │   ├── VolumeVisualizer/# 音量可视化
-│   │   └── BackgroundEffects/# 背景特效
+│   │   ├── BackgroundEffects/
+│   │   ├── Controls/              # 音频来源、设备、开始/停止、静音
+│   │   ├── CurrentTranslation/
+│   │   ├── Header/
+│   │   ├── SubtitleDisplay/       # 实时字幕、历史记录、导出、总结
+│   │   ├── VisualStage/           # 状态和音频可视化舞台
+│   │   └── VolumeVisualizer/
 │   ├── hooks/
-│   │   ├── useWebSocket.ts  # WebSocket 通信
-│   │   ├── useAudioPlayer.ts# TTS 音频播放
-│   │   └── useAudioRecorder.ts # 麦克风录音
+│   │   ├── useAudioPlayer.ts      # TTS 播放队列
+│   │   ├── useAudioRecorder.ts    # 麦克风/系统音频采集
+│   │   └── useWebSocket.ts        # 翻译 WebSocket 状态机
 │   ├── services/
-│   │   └── api.ts           # REST API 调用
+│   │   └── api.ts                 # 会话、历史、总结 API
 │   ├── types/
-│   │   └── index.ts         # TypeScript 类型定义
+│   │   └── index.ts
 │   └── utils/
-│       └── audio.ts         # 音频工具函数
-├── package.json
+│       ├── audio.ts               # PCM/Base64/时间工具
+│       ├── pendingAudio.ts        # ready 前音频缓存策略
+│       └── subtitles.ts           # 字幕合并规则
+├── tests/                         # 纯逻辑测试
+├── tsconfig.test.json
 ├── vite.config.ts
-└── README.md
+└── package.json
 ```
 
-## 🚀 快速开始
+## 功能
 
-### 安装依赖
+- 中文和英文双向同声传译
+- 麦克风输入
+- 浏览器系统音频输入，适合翻译会议、视频或远程通话声音
+- 翻译服务 ready 前缓存音频，ready 后再发送
+- 实时字幕和历史字幕合并展示
+- TTS 播放和静音控制
+- 会议记录导出
+- AI 会议总结
 
-```bash
+## 本地开发
+
+后端默认需要运行在 `localhost:3100`。Vite 开发服务器会把 `/api` 和 `/ws` 代理过去。
+
+```powershell
 cd frontend
 npm install
-```
-
-### 开发模式
-
-```bash
 npm run dev
-# 访问 http://localhost:5173
 ```
 
-### 生产构建
+访问：
 
-```bash
+```text
+http://localhost:5173
+```
+
+## 生产构建
+
+```powershell
+cd frontend
 npm run build
-# 构建产物在 dist/ 目录
 ```
 
-## ✨ 功能特性
+构建产物在 `frontend/dist/`。生产模式下由 Python 后端托管，访问：
 
-- **双向翻译**：🇨🇳 中文 ↔ 英文 🇺🇸 实时互译
-- **双列显示**：左列中译英、右列英译中
-- **TTS 朗读**：翻译结果自动语音播报
-- **静音控制**：一键静音/取消静音
-- **AI 总结**：基于 OpenAI 的会议智能总结
-- **导出功能**：导出会议记录和总结
-- **音量可视化**：实时显示麦克风输入音量
+```text
+http://localhost:3100
+```
 
-## 🎨 技术栈
+## 脚本
 
-| 技术 | 用途 |
-|------|------|
-| React 18 | UI 框架 |
-| TypeScript | 类型安全 |
-| Vite | 构建工具 |
-| Framer Motion | 动画效果 |
-| Lucide React | 图标库 |
-| react-markdown | Markdown 渲染 |
+| 命令 | 说明 |
+| --- | --- |
+| `npm run dev` | 启动 Vite 开发服务器 |
+| `npm run build` | TypeScript 检查并构建生产产物 |
+| `npm run lint` | 运行 ESLint |
+| `npm run test:logic` | 编译并运行前端纯逻辑测试 |
+| `npm run preview` | 预览 Vite 生产构建 |
 
-## 📡 与后端通信
+## 音频格式
 
-前端通过 WebSocket 与后端实时通信：
-- 发送 PCM 音频数据（base64 编码）
-- 接收 ASR、翻译结果和 TTS 音频
+WebSocket `start` 会根据音频来源发送 `audioFormat`：
 
-生产模式下，前端静态文件由后端托管，访问 `http://localhost:3100` 即可。
+- 麦克风：`wav`
+- 系统音频：`pcm`
+
+前端会把输入统一转换成 16k 单声道 16-bit PCM。麦克风模式会额外先发送流式 WAV 头；系统音频模式不会发送 WAV 头。
+
+## 字幕合并
+
+字幕历史会按以下规则合并：
+
+- 同方向才合并，例如 `zh` 和 `zh-CN` 视为同类中文
+- 中英文方向不同不合并
+- 超过时间间隔不合并
+- 上一句已有句号、问号、感叹号等硬结束符时不合并
+- 合并后过长不合并
+
+## 测试
+
+前端测试只覆盖不依赖浏览器权限的纯逻辑：
+
+```powershell
+cd frontend
+npm run test:logic
+```
+
+项目协作规则要求编译、运行和测试由维护者手动执行。

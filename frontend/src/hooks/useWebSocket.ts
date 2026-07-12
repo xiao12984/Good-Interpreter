@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AudioInputMode, ConnectionStatus, SubtitleItem } from '../types';
 import { generateId } from '../utils/audio';
 import { appendMergedSubtitle } from '../utils/subtitles';
+import { appendPendingAudioChunk } from '../utils/pendingAudio';
 import { useAudioPlayer } from './useAudioPlayer';
 import { getActiveSession, messagesToSubtitles } from '../services/api';
 
@@ -20,7 +21,7 @@ interface UseWebSocketReturn {
     isMuted: boolean;
     connect: (audioInputMode?: AudioInputMode) => Promise<void>;
     disconnect: () => void;
-    sendAudio: (base64Data: string) => void;
+    sendAudio: (base64Data: string, audioInputMode?: AudioInputMode) => void;
     sendStop: () => void;
     clearSubtitles: () => void;
     loadHistory: () => Promise<void>;
@@ -32,8 +33,6 @@ type ReadyWaiter = {
     reject: (error: Error) => void;
     timeoutId: number;
 };
-
-const MAX_PENDING_AUDIO_CHUNKS = 240;
 
 export function useWebSocket({
     sourceLanguage,
@@ -53,6 +52,7 @@ export function useWebSocket({
     const connectPromiseRef = useRef<Promise<void> | null>(null);
     const readyWaiterRef = useRef<ReadyWaiter | null>(null);
     const audioReadyRef = useRef(false);
+    const audioInputModeRef = useRef<AudioInputMode>('microphone');
     const pendingAudioRef = useRef<string[]>([]);
     const currentAsrRef = useRef('');
     const currentTranslationRef = useRef('');
@@ -159,6 +159,7 @@ export function useWebSocket({
         setStatus('connecting');
         setLastError(null);
         audioReadyRef.current = false;
+        audioInputModeRef.current = audioInputMode;
 
         if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
             wsRef.current.close();
@@ -177,6 +178,8 @@ export function useWebSocket({
                 }
 
                 audioReadyRef.current = false;
+                setLastError('等待翻译服务就绪超时，请检查后端服务和火山 AST 连接。');
+                setStatus('error');
                 readyWaiterRef.current = null;
                 connectPromiseRef.current = null;
                 reject(new Error('等待翻译服务就绪超时，请检查后端服务和火山 AST 连接。'));
@@ -308,7 +311,11 @@ export function useWebSocket({
         setLastError(null);
     }, [stopPlayback, rejectReadyWaiter]);
 
-    const sendAudio = useCallback((base64Data: string) => {
+    const sendAudio = useCallback((base64Data: string, audioInputMode?: AudioInputMode) => {
+        if (audioInputMode) {
+            audioInputModeRef.current = audioInputMode;
+        }
+
         if (wsRef.current?.readyState === WebSocket.OPEN && audioReadyRef.current) {
             wsRef.current?.send(
                 JSON.stringify({
@@ -319,14 +326,11 @@ export function useWebSocket({
             return;
         }
 
-        pendingAudioRef.current.push(base64Data);
-
-        if (pendingAudioRef.current.length > MAX_PENDING_AUDIO_CHUNKS) {
-            pendingAudioRef.current.splice(
-                1,
-                pendingAudioRef.current.length - MAX_PENDING_AUDIO_CHUNKS
-            );
-        }
+        pendingAudioRef.current = appendPendingAudioChunk(
+            pendingAudioRef.current,
+            base64Data,
+            audioInputModeRef.current
+        );
     }, []);
 
     const sendStop = useCallback(() => {

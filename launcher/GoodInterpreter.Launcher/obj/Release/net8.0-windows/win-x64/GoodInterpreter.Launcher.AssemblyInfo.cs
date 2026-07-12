@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GoodInterpreter.Launcher")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+381e0e069402be81b22b7ad78ef59d9d9ba9b4bf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d86338f903613d54109f7090852fb3e7ff7fbe43")]
 [assembly: System.Reflection.AssemblyProductAttribute("GoodInterpreter.Launcher")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GoodInterpreter.Launcher")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

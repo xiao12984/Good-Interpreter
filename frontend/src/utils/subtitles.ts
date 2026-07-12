@@ -7,7 +7,16 @@ const HARD_SENTENCE_END_PATTERN = /([。！？!?…]|[.])["'”’)\]]*$/;
 const NO_SPACE_BEFORE_PATTERN = /^[,.;:!?，。！？、；：]/;
 const CJK_PUNCTUATION_END_PATTERN = /[，。！？、；：]$/;
 
-function hasHardSentenceEnding(text: string) {
+function normalizeLanguageCode(language: string) {
+    const normalized = language.trim().toLowerCase();
+
+    if (normalized.startsWith('zh')) return 'zh';
+    if (normalized.startsWith('en')) return 'en';
+
+    return normalized;
+}
+
+export function hasHardSentenceEnding(text: string) {
     return HARD_SENTENCE_END_PATTERN.test(text.trim());
 }
 
@@ -37,10 +46,10 @@ function joinSubtitleText(left: string, right: string) {
         : `${leftText}${rightText}`;
 }
 
-function canMergeSubtitle(previous: SubtitleItem, current: SubtitleItem) {
+export function canMergeSubtitle(previous: SubtitleItem, current: SubtitleItem) {
     const sameDirection =
-        previous.sourceLanguage === current.sourceLanguage &&
-        previous.targetLanguage === current.targetLanguage;
+        normalizeLanguageCode(previous.sourceLanguage) === normalizeLanguageCode(current.sourceLanguage) &&
+        normalizeLanguageCode(previous.targetLanguage) === normalizeLanguageCode(current.targetLanguage);
 
     if (!sameDirection) return false;
 
